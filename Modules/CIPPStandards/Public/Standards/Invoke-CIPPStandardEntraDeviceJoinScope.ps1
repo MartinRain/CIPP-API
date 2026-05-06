@@ -14,7 +14,7 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
 
     try {
         $CurrentInfo = New-GraphGetRequest `
-            -uri 'https://graph.microsoft.com/beta/policies/deviceRegistrationPolicy' `
+            -uri 'https://graph.microsoft.com/beta/policies/deviceRegistrationPolicy/deviceRegistrationPolicy' `
             -tenantid $Tenant
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
@@ -94,7 +94,7 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
 
             $GraphParam = @{
                 tenantid    = $Tenant
-                Uri         = 'https://graph.microsoft.com/beta/policies/deviceRegistrationPolicy'
+                Uri         = 'https://graph.microsoft.com/beta/policies/deviceRegistrationPolicy/deviceRegistrationPolicy'
                 ContentType = 'application/json; charset=utf-8'
                 asApp       = $false
                 type        = 'PATCH'
