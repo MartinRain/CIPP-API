@@ -4,6 +4,14 @@ function Invoke-CIPPStandardAddUserToGroup {
     $Username = $Settings.Username
     $GroupDisplayName = $Settings.GroupDisplayName
 
+    if ([string]::IsNullOrWhiteSpace($Username) -or [string]::IsNullOrWhiteSpace($GroupDisplayName)) {
+        Write-LogMessage -API 'Standards' -Tenant $Tenant -Message 'Username and Group Display Name are required.' -Sev Error
+        return
+    }
+
+    $Username = $Username.Trim()
+    $GroupDisplayName = $GroupDisplayName.Trim()
+
     try {
         if ($Username -like '*@*') {
             $User = New-GraphGetRequest -Uri "https://graph.microsoft.com/beta/users?`$top=999&`$select=id,userPrincipalName,mailNickname&`$filter=userPrincipalName eq '$Username'" -tenantid $Tenant -asApp $true
@@ -51,22 +59,45 @@ function Invoke-CIPPStandardAddUserToGroup {
             if ($StateIsCorrect -eq $true) {
                 Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "User '$($User.userPrincipalName)' is correctly a member of '$($Group.displayName)'." -Sev Info
             } else {
-                Write-StandardsAlert -message "User is not a member of the expected group." -tenant $Tenant -standardName 'AddUserToGroup' -standardId $Settings.standardId
+                $CompareField = [PSCustomObject]@{
+                    UserPrincipalName = $User.userPrincipalName
+                    GroupDisplayName  = $Group.displayName
+                    IsMember          = $StateIsCorrect
+                }
+
+                Write-StandardsAlert `
+                    -message "User '$($User.userPrincipalName)' is not a member of '$($Group.displayName)'." `
+                    -object $CompareField `
+                    -tenant $Tenant `
+                    -standardName 'AddUserToGroup' `
+                    -standardId $Settings.standardId
             }
         }
 
         if ($Settings.report -eq $true) {
-            Set-CIPPStandardsCompareField -FieldName 'standards.AddUserToGroup' -CurrentValue @{
+            $CurrentValue = @{
                 UserPrincipalName = $User.userPrincipalName
                 GroupDisplayName  = $Group.displayName
                 IsMember          = $StateIsCorrect
-            } -ExpectedValue @{
-                Username         = $Username
-                GroupDisplayName = $GroupDisplayName
-                IsMember         = $true
-            } -TenantFilter $Tenant
+            }
 
-            Add-CIPPBPAField -FieldName 'AddUserToGroup' -FieldValue $StateIsCorrect -StoreAs bool -Tenant $Tenant
+            $ExpectedValue = @{
+                UserPrincipalName = $User.userPrincipalName
+                GroupDisplayName  = $GroupDisplayName
+                IsMember          = $true
+            }
+
+            Set-CIPPStandardsCompareField `
+                -FieldName 'standards.AddUserToGroup' `
+                -CurrentValue $CurrentValue `
+                -ExpectedValue $ExpectedValue `
+                -TenantFilter $Tenant
+
+            Add-CIPPBPAField `
+                -FieldName 'AddUserToGroup' `
+                -FieldValue $StateIsCorrect `
+                -StoreAs bool `
+                -Tenant $Tenant
         }
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
