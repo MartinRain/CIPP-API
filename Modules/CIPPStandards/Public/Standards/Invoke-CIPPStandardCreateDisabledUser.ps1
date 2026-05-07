@@ -36,7 +36,7 @@ function Invoke-CIPPStandardCreateDisabledUser {
         $UPN = "$Username@$OnMicrosoftDomain"
 
         $Existing = New-GraphGetRequest `
-            -uri "https://graph.microsoft.com/beta/users?`$top=999&`$filter=userPrincipalName eq '$UPN'&`$select=id,userPrincipalName,accountEnabled" `
+            -uri "https://graph.microsoft.com/beta/users?`$top=999&`$filter=userPrincipalName eq '$UPN'&`$select=id,userPrincipalName,displayName,accountEnabled" `
             -tenantid $Tenant
 
         $ExistingUser = $Existing | Select-Object -First 1
@@ -53,6 +53,20 @@ function Invoke-CIPPStandardCreateDisabledUser {
 
                 Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "User '$UPN' already existed and was disabled." -Sev Info
             }
+
+            Set-CIPPStandardsCompareField `
+                -FieldName 'standards.CreateDisabledUser' `
+                -CurrentValue @{
+                    DisplayName       = $DisplayName
+                    UserPrincipalName = $UPN
+                    AccountEnabled    = $false
+                } `
+                -ExpectedValue @{
+                    DisplayName       = $DisplayName
+                    UserPrincipalName = $UPN
+                    AccountEnabled    = $false
+                } `
+                -TenantFilter $Tenant
 
             Add-CIPPBPAField -FieldName 'CreateDisabledUser' -FieldValue $true -StoreAs bool -Tenant $Tenant
             return
@@ -79,6 +93,21 @@ function Invoke-CIPPStandardCreateDisabledUser {
             -body (@{ accountEnabled = $false } | ConvertTo-Json -Compress)
 
         Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Created disabled user '$($Result.Username)'." -Sev Info
+
+        Set-CIPPStandardsCompareField `
+            -FieldName 'standards.CreateDisabledUser' `
+            -CurrentValue @{
+                DisplayName       = $DisplayName
+                UserPrincipalName = $UPN
+                AccountEnabled    = $false
+            } `
+            -ExpectedValue @{
+                DisplayName       = $DisplayName
+                UserPrincipalName = $UPN
+                AccountEnabled    = $false
+            } `
+            -TenantFilter $Tenant
+
         Add-CIPPBPAField -FieldName 'CreateDisabledUser' -FieldValue $true -StoreAs bool -Tenant $Tenant
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
