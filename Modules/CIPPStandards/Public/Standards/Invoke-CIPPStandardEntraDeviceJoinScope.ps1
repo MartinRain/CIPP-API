@@ -32,16 +32,10 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
         }
 
         try {
-            $GroupResult = New-GraphGetRequest `
+            $Group = New-GraphGetRequest `
                 -Uri "https://graph.microsoft.com/beta/groups?`$top=999&`$select=id,displayName&`$filter=displayName eq '$($Settings.customGroup)'" `
                 -tenantid $Tenant `
                 -asApp $true
-
-            $Group = if ($GroupResult.value) {
-                $GroupResult.value | Select-Object -First 1
-            } else {
-                $GroupResult | Select-Object -First 1
-            }
 
             $ExpectedGroupId = $Group.id
             $ExpectedGroupName = $Group.displayName
@@ -66,15 +60,31 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
         $CurrentGroupIds = @($CurrentAllowed.groupIds)
     }
 
+    $CurrentAppliesTo = if ($CurrentGroupIds.Count -gt 0) {
+        'selected'
+    } elseif ($CurrentAllowed.'@odata.type' -like '*noDeviceRegistrationMembership') {
+        'none'
+    } else {
+        'all'
+    }
+
+    $CurrentGroupName = if ($Settings.appliesTo -eq 'selected' -and ($CurrentGroupIds -contains $ExpectedGroupId)) {
+        $ExpectedGroupName
+    } elseif ($CurrentGroupIds.Count -gt 0) {
+        $CurrentGroupIds -join ','
+    } else {
+        ''
+    }
+
     $StateIsCorrect = switch ($Settings.appliesTo) {
         'all' {
-            $CurrentAllowed.appliesTo -eq 'all'
+            $CurrentAppliesTo -eq 'all'
         }
         'none' {
-            $CurrentAllowed.appliesTo -eq 'none'
+            $CurrentAppliesTo -eq 'none'
         }
         'selected' {
-            ($CurrentAllowed.appliesTo -eq 'selected') -and ($CurrentGroupIds -contains $ExpectedGroupId)
+            ($CurrentAppliesTo -eq 'selected') -and ($CurrentGroupIds -contains $ExpectedGroupId)
         }
         default {
             $false
@@ -82,9 +92,8 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
     }
 
     $CompareField = [PSCustomObject]@{
-        appliesTo   = $CurrentAllowed.appliesTo
-        customGroup = $ExpectedGroupName
-        groupId     = $ExpectedGroupId
+        appliesTo   = $CurrentAppliesTo
+        customGroup = $CurrentGroupName
     }
 
     if ($Settings.remediate -eq $true) {
@@ -133,6 +142,9 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
             try {
                 New-GraphPostRequest @GraphParam
                 Write-LogMessage -API 'Standards' -Tenant $Tenant -Message "Successfully configured Entra device join scope to $($Settings.appliesTo)" -Sev Info
+                $StateIsCorrect = $true
+                $CurrentAppliesTo = $Settings.appliesTo
+                $CurrentGroupName = $Settings.customGroup ?? ''
             } catch {
                 $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
                 Write-LogMessage -API 'Standards' -Tenant $Tenant -Message 'Failed to configure Entra device join scope.' -Sev Error -LogData $ErrorMessage
@@ -157,8 +169,8 @@ function Invoke-CIPPStandardEntraDeviceJoinScope {
 
     if ($Settings.report -eq $true) {
         $CurrentValue = @{
-            appliesTo   = $CurrentAllowed.appliesTo
-            customGroup = $CurrentGroupIds -join ','
+            appliesTo   = $CurrentAppliesTo
+            customGroup = $CurrentGroupName
         }
 
         $ExpectedValue = @{
