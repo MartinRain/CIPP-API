@@ -25,7 +25,7 @@ function Set-CIPPDBCacheCsTenantFederationConfiguration {
     try {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching Teams Tenant Federation Configuration' -sev Debug
 
-        $Federation = New-TeamsRequestV2 -TenantFilter $TenantFilter -Type 'TenantFederationConfiguration' -Action Get -Identity 'Global'
+        $Federation = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTenantFederationConfiguration' -CmdParams @{ Identity = 'Global' }
 
         if ($Federation) {
             $Data = @($Federation)

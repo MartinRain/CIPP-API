@@ -1,3 +1,4 @@
+
 function Invoke-ListIntunePolicy {
     <#
     .FUNCTIONALITY
@@ -215,16 +216,6 @@ function Invoke-ListIntunePolicy {
                     method = 'GET'
                     url    = "/deviceManagement/configurationPolicies?`$expand=assignments&`$top=1000"
                 }
-                @{
-                    id     = 'deviceCompliancePolicies'
-                    method = 'GET'
-                    url    = "/deviceManagement/deviceCompliancePolicies?`$expand=assignments&`$top=1000"
-                }
-                @{
-                    id     = 'Intents'
-                    method = 'GET'
-                    url    = "/deviceManagement/intents?`$top=1000"
-                }
             )
 
             $BulkResults = New-GraphBulkRequest -Requests $BulkRequests -tenantid $TenantFilter
@@ -235,8 +226,7 @@ function Invoke-ListIntunePolicy {
             $GraphRequest = $BulkResults | Where-Object { $_.id -ne 'Groups' } | ForEach-Object {
                 $URLName = $_.Id
                 $_.body.Value | ForEach-Object {
-                    $AssignmentContext = $_.'assignments@odata.context'
-                    $policyTypeName = switch -Wildcard ($AssignmentContext) {
+                    $policyTypeName = switch -Wildcard ($_.'assignments@odata.context') {
                         '*microsoft.graph.windowsIdentityProtectionConfiguration*' { 'Identity Protection' }
                         '*microsoft.graph.windows10EndpointProtectionConfiguration*' { 'Endpoint Protection' }
                         '*microsoft.graph.windows10CustomConfiguration*' { 'Custom' }
@@ -254,18 +244,7 @@ function Invoke-ListIntunePolicy {
                         '*iosUpdateConfiguration*' { 'iOS Update Configuration' }
                         '*windowsDriverUpdateProfiles*' { 'Driver Update' }
                         '*configurationPolicies*' { 'Device Configuration' }
-                        '*deviceCompliancePolicies*' { 'Compliance Policy' }
-                        '*intents*' { 'Endpoint Security' }
-                        default { $null }
-                    }
-                    # Fall back to the request type when the assignment context does not identify the policy
-                    # (e.g. Intents are listed without expanding assignments).
-                    if ([string]::IsNullOrWhiteSpace($policyTypeName)) {
-                        $policyTypeName = switch ($URLName) {
-                            'deviceCompliancePolicies' { 'Compliance Policy' }
-                            'Intents' { 'Endpoint Security' }
-                            default { $AssignmentContext }
-                        }
+                        default { $_.'assignments@odata.context' }
                     }
                     $Assignments = $_.assignments.target | Select-Object -Property '@odata.type', groupId
                     $PolicyAssignment = [System.Collections.Generic.List[string]]::new()

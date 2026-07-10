@@ -16,7 +16,7 @@ function Invoke-ExecOffloadFunctions {
         $VersionTable = Get-CippTable -tablename 'Version'
         $Version = Get-CIPPAzDataTableEntity @VersionTable -Filter "RowKey ne 'Version'"
         $MainVersion = $Version | Where-Object { $_.RowKey -eq $env:WEBSITE_SITE_NAME }
-        $OffloadVersions = $Version | Where-Object { Test-CippOffloadFunctionApp -SiteName $_.RowKey }
+        $OffloadVersions = $Version | Where-Object { $_.RowKey -match '-' }
 
         $Alerts = [System.Collections.Generic.List[string]]::new()
 
@@ -35,7 +35,7 @@ function Invoke-ExecOffloadFunctions {
             }
         }
 
-        $VersionTable = $Version | Select-Object @{n = 'Name'; e = { $_.RowKey } }, @{n = 'Version'; e = { $_.Version } }, @{n = 'Default'; e = { -not (Test-CippOffloadFunctionApp -SiteName $_.RowKey) } }
+        $VersionTable = $Version | Select-Object @{n = 'Name'; e = { $_.RowKey } }, @{n = 'Version'; e = { $_.Version } }, @{n = 'Default'; e = { $_.RowKey -notmatch '-' } }
 
         $CurrentState = if (!$CurrentState) {
             [PSCustomObject]@{

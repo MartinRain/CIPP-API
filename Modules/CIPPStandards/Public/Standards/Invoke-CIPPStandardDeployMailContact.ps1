@@ -120,18 +120,15 @@ function Invoke-CIPPStandardDeployMailContact {
 
     # Report
     if ($Settings.report -eq $true) {
-        # Email addresses are compared lowercased on both sides: Exchange re-cases the domain part
-        # when it creates the contact (support@mydomain.com becomes support@Mydomain.com), which
-        # would otherwise fail the case-sensitive comparison forever.
         $ContactData = @{
             DisplayName          = $Settings.DisplayName
-            ExternalEmailAddress = ([string]$Settings.ExternalEmailAddress).ToLower()
+            ExternalEmailAddress = $Settings.ExternalEmailAddress
             FirstName            = $Settings.FirstName ?? ''
             LastName             = $Settings.LastName ?? ''
         }
         $currentValue = @{
             DisplayName          = $ExistingContactLookup.displayName
-            ExternalEmailAddress = ([string]($ExistingContact.ExternalEmailAddress -replace 'SMTP:', '')).ToLower()
+            ExternalEmailAddress = ($ExistingContact.ExternalEmailAddress -replace 'SMTP:', '')
             FirstName            = $ExistingContactLookup.givenName ?? ''
             LastName             = $ExistingContactLookup.surname ?? ''
         }

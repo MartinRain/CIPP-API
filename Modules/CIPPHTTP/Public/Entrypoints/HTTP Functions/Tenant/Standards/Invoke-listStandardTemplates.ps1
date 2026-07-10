@@ -35,8 +35,7 @@ function Invoke-listStandardTemplates {
                 } -Force
                 Write-LogMessage -headers $Request.Headers -API 'Standards' -message "Standards template '$($RowKey)' contained corrupt data (case-duplicate keys) and was automatically repaired and re-saved." -Sev 'Warning'
             } catch {
-                Write-LogMessage -headers $Request.Headers -API 'Standards' -message "Standards template '$($RowKey)' was repaired but could not be re-saved, so it was omitted from the response: $($_.Exception.Message)" -Sev 'Error'
-                return
+                Write-LogMessage -headers $Request.Headers -API 'Standards' -message "Standards template '$($RowKey)' was repaired for this response but could not be re-saved: $($_.Exception.Message)" -Sev 'Warning'
             }
         }
         if ($Data) {

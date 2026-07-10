@@ -19,7 +19,6 @@ function New-GraphPOSTRequest {
         $returnHeaders = $false,
         $maxRetries = 3,
         $ScheduleRetry = $false,
-        [switch]$UseCertificate,
         $headers
     )
 
@@ -27,9 +26,7 @@ function New-GraphPOSTRequest {
         if ($Headers) {
             $Headers = $Headers
         } else {
-            # -UseCertificate authenticates the app with the SAM certificate instead of the
-            # client secret: delegated (refresh token) by default, app-only with -AsApp $true
-            $Headers = Get-GraphToken -tenantid $tenantid -scope $scope -AsApp $asapp -SkipCache $skipTokenCache -UseCertificate:$UseCertificate
+            $Headers = Get-GraphToken -tenantid $tenantid -scope $scope -AsApp $asapp -SkipCache $skipTokenCache
         }
         if ($AddedHeaders) {
             foreach ($header in $AddedHeaders.GetEnumerator()) {
@@ -58,7 +55,6 @@ function New-GraphPOSTRequest {
             } catch {
                 $ShouldRetry = $false
                 $WaitTime = 0
-                $RetryReason = ''
                 $RawErrorBody = $_.ErrorDetails.Message
                 $Message = if ($_.ErrorDetails.Message) {
                     Get-NormalizedError -Message $_.ErrorDetails.Message
@@ -71,24 +67,20 @@ function New-GraphPOSTRequest {
                     $RetryAfterHeader = $_.Exception.Response.Headers['Retry-After']
                     if ($RetryAfterHeader) {
                         $WaitTime = [int]$RetryAfterHeader
-                        $RetryReason = 'Rate limited (429).'
-                    } else {
-                        $WaitTime = Get-Random -Minimum 1.1 -Maximum 4.1
-                        $RetryReason = 'Rate limited (429) with no Retry-After header.'
+                        Write-Warning "Rate limited (429). Waiting $WaitTime seconds before retry. Attempt $($RetryCount + 1) of $maxRetries"
+                        $ShouldRetry = $true
                     }
-                    $ShouldRetry = $true
                 }
                 # Check for "Resource temporarily unavailable"
                 elseif ($Message -like '*Resource temporarily unavailable*' -or $Message -like '*Too many requests*') {
                     $WaitTime = Get-Random -Minimum 1.1 -Maximum 3.1
-                    $RetryReason = 'Resource temporarily unavailable.'
+                    Write-Warning "Resource temporarily unavailable. Waiting $WaitTime seconds before retry. Attempt $($RetryCount + 1) of $maxRetries"
                     $ShouldRetry = $true
                 }
 
                 if ($ShouldRetry) {
                     $RetryCount++
                     if ($RetryCount -lt $maxRetries) {
-                        Write-Warning "$RetryReason Waiting $WaitTime seconds before retry. Attempt $($RetryCount + 1) of $maxRetries"
                         Start-Sleep -Seconds $WaitTime
                     }
                 } else {
@@ -121,7 +113,6 @@ function New-GraphPOSTRequest {
                 if ($IgnoreErrors) { $RetryParameters.IgnoreErrors = $IgnoreErrors }
                 if ($returnHeaders) { $RetryParameters.ReturnHeaders = $returnHeaders }
                 if ($maxRetries) { $RetryParameters.maxRetries = $maxRetries }
-                if ($UseCertificate) { $RetryParameters.UseCertificate = $true }
 
                 # Create the scheduled task object
                 $TaskObject = [PSCustomObject]@{

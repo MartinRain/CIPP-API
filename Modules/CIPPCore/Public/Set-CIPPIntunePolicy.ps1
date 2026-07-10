@@ -16,7 +16,7 @@ function Set-CIPPIntunePolicy {
         [int]$LevenshteinDistance = 0
     )
 
-    $RawJSON = Get-CIPPTextReplacement -TenantFilter $TenantFilter -Text $RawJSON -EscapeForJson
+    $RawJSON = Get-CIPPTextReplacement -TenantFilter $TenantFilter -Text $RawJSON
 
     if ($LevenshteinDistance -gt 5) {
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "LevenshteinDistance is set to $LevenshteinDistance. Values above 5 can match unrelated policies; use with caution." -Sev Warning

@@ -1,4 +1,4 @@
-function Invoke-ExecSetSecurityIncident {
+Function Invoke-ExecSetSecurityIncident {
     <#
     .FUNCTIONALITY
         Entrypoint
@@ -12,40 +12,27 @@ function Invoke-ExecSetSecurityIncident {
     $Headers = $Request.Headers
 
 
+    $first = ''
     # Interact with query parameters or the body of the request.
-    $TenantFilter = $Request.Body.tenantFilter
-    $IncidentFilter = $Request.Body.GUID
-    $Status = $Request.Body.Status
-    $Classification = $Request.Body.Classification
-    $Determination = $Request.Body.Determination
-    # Severity autoComplete submits {label, value}
-    $Severity = $Request.Body.Severity.value
-    $Comment = $Request.Body.Comment
-    $Redirected = $Request.Body.Redirected -as [int]
-
-    $AssignToSelf = [System.Convert]::ToBoolean($Request.Body.AssignToSelf)
-    # Assign-to-self resolves to the caller; other actions omit the assignee so it's preserved.
-    if ($AssignToSelf -eq $true) {
-        $Assigned = ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Headers.'x-ms-client-principal')) | ConvertFrom-Json).userDetails
-    }
-
-    # Hashtable + ConvertTo-Json so free-text fields (resolvingComment) are escaped correctly.
-    $BodyObject = [ordered]@{}
-    $BodyParts = [System.Collections.Generic.List[string]]::new()
+    $TenantFilter = $Request.Query.tenantFilter ?? $Request.Body.tenantFilter
+    $IncidentFilter = $Request.Query.GUID ?? $Request.Body.GUID
+    $Status = $Request.Query.Status ?? $Request.Body.Status
+    # $Assigned = $Request.Query.Assigned ?? $Request.Body.Assigned ?? $Headers.'x-ms-client-principal'
+    $Assigned = $Request.Query.Assigned ?? $Request.Body.Assigned ?? ([System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Headers.'x-ms-client-principal')) | ConvertFrom-Json).userDetails
+    $Classification = $Request.Query.Classification ?? $Request.Body.Classification
+    $Determination = $Request.Query.Determination ?? $Request.Body.Determination
+    $Redirected = $Request.Query.Redirected -as [int] ?? $Request.Body.Redirected -as [int]
+    $BodyBuild
+    $AssignBody = '{'
 
     try {
         # We won't update redirected incidents because the incident it is redirected to should instead be updated
         if ($Redirected -lt 1) {
             # Set received status
             if ($null -ne $Status) {
-                $BodyObject['status'] = $Status
-                $BodyParts.Add("status to $Status")
-            }
-
-            # Set received severity
-            if ($null -ne $Severity) {
-                $BodyObject['severity'] = $Severity
-                $BodyParts.Add("severity to $Severity")
+                $AssignBody += $first + '"status":"' + $Status + '"'
+                $BodyBuild += $first + 'Set status for incident ' + $IncidentFilter + ' to ' + $Status
+                $first = ', '
             }
 
             # Set received classification and determination
@@ -55,47 +42,43 @@ function Invoke-ExecSetSecurityIncident {
                     throw
                 }
 
-                $BodyObject['classification'] = $Classification
-                $BodyObject['determination'] = $Determination
-                $BodyParts.Add("classification & determination to $Classification $Determination")
-            }
-
-            # Set received resolving comment
-            if ($null -ne $Comment) {
-                $BodyObject['resolvingComment'] = $Comment
-                $BodyParts.Add('resolving comment')
+                $AssignBody += $first + '"classification":"' + $Classification + '", "determination":"' + $Determination + '"'
+                $BodyBuild += $first + 'Set classification & determination for incident ' + $IncidentFilter + ' to ' + $Classification + ' ' + $Determination
+                $first = ', '
             }
 
             # Set received assignee
             if ($null -ne $Assigned) {
-                $BodyObject['assignedTo'] = $Assigned
+                $AssignBody += $first + '"assignedTo":"' + $Assigned + '"'
                 if ($null -eq $Status) {
-                    $BodyParts.Add("assigned to $Assigned")
+                    $BodyBuild += $first + 'Set assigned for incident ' + $IncidentFilter + ' to ' + $Assigned
                 }
+                $first = ', '
             }
 
-            $AssignBody = ConvertTo-Json -InputObject $BodyObject -Compress
-            $BodyBuild = "Set $($BodyParts -join ', ') for incident $IncidentFilter"
+            $AssignBody += '}'
 
-            $Result = $BodyBuild
-            $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/security/incidents/$IncidentFilter" -type PATCH -tenantid $TenantFilter -body $AssignBody -asApp $true
+            $ResponseBody = [pscustomobject]@{'Results' = $BodyBuild }
+            New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/security/incidents/$IncidentFilter" -type PATCH -tenantid $TenantFilter -body $AssignBody -asApp $true
             Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Update incident $IncidentFilter with values $AssignBody" -Sev 'Info'
         } else {
-            $Result = "Refused to update incident $IncidentFilter because it is redirected to another incident"
-            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -Sev 'Info'
+            $ResponseBody = [pscustomobject]@{'Results' = "Refused to update incident $IncidentFilter with values $AssignBody because it is redirected to another incident" }
+            Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Refused to update incident $IncidentFilter with values $AssignBody because it is redirected to another incident" -Sev 'Info'
         }
 
+        $body = $ResponseBody
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
         $Result = "Failed to update incident $IncidentFilter : $($ErrorMessage.NormalizedError)"
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -Sev 'Error' -LogData $ErrorMessage
+        $body = [pscustomobject]@{'Results' = $Result }
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
 
     return ([HttpResponseContext]@{
             StatusCode = $StatusCode
-            Body       = @{ 'Results' = $Result }
+            Body       = $body
         })
 
 }

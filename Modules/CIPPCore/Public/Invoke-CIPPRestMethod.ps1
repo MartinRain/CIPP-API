@@ -243,7 +243,7 @@ function Invoke-CIPPRestMethod {
     # ------------------------------------------------------------------
     if (-not $SkipHttpErrorCheck -and -not $Result.IsSuccess) {
         $ErrorMessage = "Response status code does not indicate success: $($Result.StatusCode)"
-        $Exception = [CIPP.CIPPHttpRequestException]::new($ErrorMessage, [int]$Result.StatusCode, $Result.ResponseHeaders, $Result.Content)
+        $Exception = [System.Net.Http.HttpRequestException]::new($ErrorMessage)
         $ErrorRecord = [System.Management.Automation.ErrorRecord]::new($Exception, 'WebCmdletWebResponseException', [System.Management.Automation.ErrorCategory]::InvalidOperation, $Uri)
         if (-not [string]::IsNullOrWhiteSpace($Result.Content)) {
             $ErrorRecord.ErrorDetails = [System.Management.Automation.ErrorDetails]::new($Result.Content)

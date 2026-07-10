@@ -17,7 +17,6 @@ function Invoke-CIPPTestCollection {
         - CIS              → Invoke-CippTestCIS_*
         - SMB1001          → Invoke-CippTestSMB1001_*
         - CopilotReadiness → Invoke-CippTestCopilotReady*
-        - E8               → Invoke-CippTestE8_*
         - Custom           → Special: enumerates enabled ScriptGuids from DB and calls
                              Invoke-CippTestCustomScripts once per guid (the function
                              requires a ScriptGuid parameter to filter the table query)
@@ -34,7 +33,7 @@ function Invoke-CIPPTestCollection {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        [ValidateSet('ZTNA', 'ORCA', 'EIDSCA', 'CISA', 'CIS', 'SMB1001', 'CopilotReadiness', 'GenericTests', 'E8', 'Custom')]
+        [ValidateSet('ZTNA', 'ORCA', 'EIDSCA', 'CISA', 'CIS', 'SMB1001', 'CopilotReadiness', 'GenericTests', 'Custom')]
         [string]$SuiteName,
 
         [Parameter(Mandatory = $true)]
@@ -52,7 +51,6 @@ function Invoke-CIPPTestCollection {
         SMB1001          = 'Invoke-CippTestSMB1001_*'
         CopilotReadiness = 'Invoke-CippTestCopilotReady*'
         GenericTests     = 'Invoke-CippTestGenericTest*'
-        E8               = 'Invoke-CippTestE8_*'
     }
 
     $SuiteStopwatch = [System.Diagnostics.Stopwatch]::StartNew()

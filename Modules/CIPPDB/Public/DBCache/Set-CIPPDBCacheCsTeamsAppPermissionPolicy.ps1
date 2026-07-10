@@ -24,7 +24,7 @@ function Set-CIPPDBCacheCsTeamsAppPermissionPolicy {
     try {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching Teams App Permission Policies' -sev Debug
 
-        $AppPermissionPolicies = New-TeamsRequestV2 -TenantFilter $TenantFilter -Type 'TeamsAppPermissionPolicy' -Action Get -ListAll
+        $AppPermissionPolicies = New-TeamsRequest -TenantFilter $TenantFilter -Cmdlet 'Get-CsTeamsAppPermissionPolicy'
 
         if ($AppPermissionPolicies) {
             $Data = @($AppPermissionPolicies)

@@ -35,8 +35,7 @@ function Compare-CIPPIntuneObject {
             'isSynced'
             'locationInfo',
             'templateId',
-            'source',
-            'package'
+            'source'
         )
 
         $excludeProps = $defaultExcludeProperties + $ExcludeProperties
@@ -174,12 +173,11 @@ function Compare-CIPPIntuneObject {
                 if (ShouldCompareAsUnorderedSet -PropertyPath $PropertyPath) {
                     # For unordered sets, compare contents regardless of order
                     if ($Object1.Count -ne $Object2.Count) {
-                        # Different lengths - report the actual values so a technician
-                        # can see exactly what differs and decide on the action.
+                        # Different lengths - report the difference
                         $result.Add([PSCustomObject]@{
                                 Property      = $PropertyPath
-                                ExpectedValue = ($Object1 -join ', ')
-                                ReceivedValue = ($Object2 -join ', ')
+                                ExpectedValue = "Array with $($Object1.Count) items"
+                                ReceivedValue = "Array with $($Object2.Count) items"
                             })
                     } else {
                         # Same length - check if all items exist in both arrays
@@ -450,7 +448,7 @@ function Compare-CIPPIntuneObject {
                                 }
                                 $values.Add($displayValue)
                             }
-                            $childValue = ($values | Sort-Object) -join ', '
+                            $childValue = $values -join ', '
 
                             $results.Add([PSCustomObject]@{
                                     Key    = "GroupChild-$($child.settingDefinitionId)"
@@ -466,7 +464,7 @@ function Compare-CIPPIntuneObject {
                             foreach ($simpleValue in $child.simpleSettingCollectionValue) {
                                 $values.Add($simpleValue.value)
                             }
-                            $childValue = ($values | Sort-Object) -join ', '
+                            $childValue = $values -join ', '
 
                             $results.Add([PSCustomObject]@{
                                     Key    = "GroupChild-$($child.settingDefinitionId)"
@@ -767,9 +765,7 @@ function Compare-CIPPIntuneObject {
                 $key
             }
 
-            # Flag when values differ or the setting exists on only one side; a setting present on both sides with equal (even null) values is compliant
-            $presenceMismatch = ($null -eq $refItem) -xor ($null -eq $diffItem)
-            if ($refRawValue -ne $diffRawValue -or $presenceMismatch) {
+            if ($refRawValue -ne $diffRawValue -or $null -eq $refRawValue -or $null -eq $diffRawValue) {
                 $result.Add([PSCustomObject]@{
                         Property      = $label
                         ExpectedValue = $refValue

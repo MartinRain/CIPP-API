@@ -7,11 +7,9 @@ function Get-CIPPAzDataTableEntity {
         $First,
         $Skip,
         $Sort,
-        $Count,
-        [int]$MaxRetries = 3
+        $Count
     )
 
-    $PSBoundParameters['MaxRetries'] = $MaxRetries
     $Results = Get-AzDataTableEntity @PSBoundParameters
     $mergedResults = @{}
     $rootEntities = @{} # Keyed by "$PartitionKey|$RowKey"

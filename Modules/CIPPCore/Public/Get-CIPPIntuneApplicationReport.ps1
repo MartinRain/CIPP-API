@@ -65,7 +65,7 @@ function Get-CIPPIntuneApplicationReport {
                     }
                     '#microsoft.graph.exclusionGroupAssignmentTarget' {
                         $groupName = ($Groups | Where-Object { $_.id -eq $target.groupId }).displayName
-                        if ($groupName) { $AppExclude.Add("$groupName$intentSuffix") }
+                        if ($groupName) { $AppExclude.Add($groupName) }
                     }
                 }
             }

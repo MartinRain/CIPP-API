@@ -19,8 +19,9 @@ function Set-CIPPDBCacheDeviceSettings {
     try {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching device settings' -sev Debug
 
-        New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/directory/deviceLocalCredentials' -tenantid $TenantFilter -Stream |
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'DeviceSettings' -AddCount
+        $DeviceSettings = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/directory/deviceLocalCredentials' -tenantid $TenantFilter
+        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'DeviceSettings' -Data @($DeviceSettings) -AddCount
+        $DeviceSettings = $null
 
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Cached device settings successfully' -sev Debug
 

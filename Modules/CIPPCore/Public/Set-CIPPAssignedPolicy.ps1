@@ -3,8 +3,6 @@ function Set-CIPPAssignedPolicy {
     param(
         $GroupName,
         $ExcludeGroup,
-        $ExcludeGroupIds,
-        $ExcludeGroupNames,
         $PolicyId,
         $Type,
         $TenantFilter,
@@ -15,8 +13,7 @@ function Set-CIPPAssignedPolicy {
         $AssignmentFilterType = 'include',
         $GroupIds,
         $GroupNames,
-        $AssignmentMode = 'replace',
-        $AssignmentDirection
+        $AssignmentMode = 'replace'
     )
 
     Write-Host "Assigning policy $PolicyId ($PlatformType/$Type) to $GroupName"
@@ -89,17 +86,14 @@ function Set-CIPPAssignedPolicy {
                     $resolvedGroupIds = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/groups?$select=id,displayName&$top=999' -tenantid $TenantFilter |
                         ForEach-Object {
                             foreach ($SingleName in $GroupNames) {
-                                if ($_.displayName -like ($SingleName -replace '\[', '`[' -replace '\]', '`]')) {
+                                if ($_.displayName -like $SingleName) {
                                     $_.id
                                 }
                             }
                         }
                 }
 
-                # Only error when an include target was actually requested. Exclude-only
-                # assignments legitimately resolve to no include groups here.
-                $IncludeRequested = $GroupName -or ($GroupIds -and @($GroupIds).Count -gt 0)
-                if ((-not $resolvedGroupIds -or $resolvedGroupIds.Count -eq 0) -and $IncludeRequested) {
+                if (-not $resolvedGroupIds -or $resolvedGroupIds.Count -eq 0) {
                     $ErrorMessage = "No groups found matching the specified name(s): $GroupName. Policy not assigned."
                     Write-LogMessage -headers $Headers -API $APIName -message $ErrorMessage -sev 'Warning' -tenant $TenantFilter
                     throw $ErrorMessage
@@ -117,26 +111,19 @@ function Set-CIPPAssignedPolicy {
                 }
             }
         }
-        if ($ExcludeGroup -or ($ExcludeGroupIds -and @($ExcludeGroupIds).Count -gt 0)) {
-            # Prefer explicit group IDs (from the picker); fall back to name resolution
-            # for templates/wizards/API callers that still send ExcludeGroup names.
-            if ($ExcludeGroupIds -and @($ExcludeGroupIds).Count -gt 0) {
-                Write-Host "Excluding custom group(s) by id: $($ExcludeGroupIds -join ', ')"
-                $ResolvedExcludeIds = @($ExcludeGroupIds)
-            } else {
-                Write-Host "We're supposed to exclude a custom group. The group is $ExcludeGroup"
-                $ExcludeGroupNames = $ExcludeGroup.Split(',').Trim()
-                $ResolvedExcludeIds = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/groups?$select=id,displayName&$top=999' -tenantid $TenantFilter |
-                    ForEach-Object {
-                        foreach ($SingleName in $ExcludeGroupNames) {
-                            if ($_.displayName -like ($SingleName -replace '\[', '`[' -replace '\]', '`]')) {
-                                $_.id
-                            }
+        if ($ExcludeGroup) {
+            Write-Host "We're supposed to exclude a custom group. The group is $ExcludeGroup"
+            $ExcludeGroupNames = $ExcludeGroup.Split(',').Trim()
+            $ExcludeGroupIds = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/groups?$select=id,displayName&$top=999' -tenantid $TenantFilter |
+                ForEach-Object {
+                    foreach ($SingleName in $ExcludeGroupNames) {
+                        if ($_.displayName -like $SingleName) {
+                            $_.id
                         }
                     }
-            }
+                }
 
-            foreach ($egid in $ResolvedExcludeIds) {
+            foreach ($egid in $ExcludeGroupIds) {
                 $assignmentsList.Add(
                     @{
                         target = @{
@@ -160,51 +147,50 @@ function Set-CIPPAssignedPolicy {
             }
         }
 
-        # Determine which existing assignments (if any) must be preserved.
-        #   append              -> keep all existing (minus ones the new set overrides)
-        #   replace + direction -> keep everything except the direction being edited
-        #                          (Custom Group action only; legacy replace overwrites everything)
-        $DirectionScoped = -not [string]::IsNullOrWhiteSpace($AssignmentDirection)
-        $EditedType = switch ($AssignmentDirection) {
-            'exclude' { '#microsoft.graph.exclusionGroupAssignmentTarget' }
-            'include' { '#microsoft.graph.groupAssignmentTarget' }
-            default { $null }
-        }
-        $PreserveExisting = ($AssignmentMode -eq 'append') -or ($AssignmentMode -eq 'replace' -and $DirectionScoped)
-
+        # If we're appending, we need to get existing assignments
         $ExistingAssignments = @()
-        if ($PreserveExisting) {
+        if ($AssignmentMode -eq 'append') {
             try {
                 $uri = "https://graph.microsoft.com/beta/$($PlatformType)/$Type('$($PolicyId)')/assignments"
                 $ExistingAssignments = New-GraphGetRequest -uri $uri -tenantid $TenantFilter
                 Write-Host "Found $($ExistingAssignments.Count) existing assignments for policy $PolicyId"
             } catch {
-                $ErrorMessage = "Unable to retrieve existing assignments for $PolicyId. Existing assignments must be preserved for assignment mode '$AssignmentMode' and direction '$AssignmentDirection'. Aborting to avoid removing assignments. Error: $($_.Exception.Message)"
-                Write-Warning $ErrorMessage
-                throw $ErrorMessage
+                Write-Warning "Unable to retrieve existing assignments for $PolicyId. Proceeding with new assignments only. Error: $($_.Exception.Message)"
+                $ExistingAssignments = @()
             }
         }
 
-        # Decide which existing assignments to carry forward.
-        $FinalAssignments = [System.Collections.Generic.List[object]]::new()
+        # Deduplicate current assignments so the new ones override existing ones
         if ($ExistingAssignments -and $ExistingAssignments.Count -gt 0) {
-            foreach ($ExistingAssignment in $ExistingAssignments) {
-                $ExistingType = $ExistingAssignment.target.'@odata.type'
-                $Keep = if ($AssignmentMode -eq 'replace' -and $DirectionScoped) {
-                    # Direction-scoped replace: drop every target of the edited type, keep the rest
-                    # (the other direction plus All Users / All Devices broad targets).
-                    $ExistingType -ne $EditedType
-                } else {
-                    # Append: keep existing unless the new set overrides the same group/target.
-                    switch ($ExistingType) {
-                        '#microsoft.graph.groupAssignmentTarget' { $ExistingAssignment.target.groupId -notin $assignmentsList.target.groupId }
-                        '#microsoft.graph.exclusionGroupAssignmentTarget' { $ExistingAssignment.target.groupId -notin $assignmentsList.target.groupId }
-                        default { $ExistingType -notin $assignmentsList.target.'@odata.type' }
+            $ExistingAssignments = $ExistingAssignments | ForEach-Object {
+                $ExistingAssignment = $_
+                switch ($ExistingAssignment.target.'@odata.type') {
+                    '#microsoft.graph.groupAssignmentTarget' {
+                        if ($ExistingAssignment.target.groupId -notin $assignmentsList.target.groupId) {
+                            $ExistingAssignment
+                        }
+                    }
+                    '#microsoft.graph.exclusionGroupAssignmentTarget' {
+                        if ($ExistingAssignment.target.groupId -notin $assignmentsList.target.groupId) {
+                            $ExistingAssignment
+                        }
+                    }
+                    default {
+                        if ($ExistingAssignment.target.'@odata.type' -notin $assignmentsList.target.'@odata.type') {
+                            $ExistingAssignment
+                        }
                     }
                 }
-                if ($Keep) {
-                    $FinalAssignments.Add(@{ target = $ExistingAssignment.target })
-                }
+            }
+        }
+
+        # Build final assignments list
+        $FinalAssignments = [System.Collections.Generic.List[object]]::new()
+        if ($AssignmentMode -eq 'append' -and $ExistingAssignments) {
+            foreach ($existing in $ExistingAssignments) {
+                $FinalAssignments.Add(@{
+                        target = $existing.target
+                    })
             }
         }
 
@@ -223,8 +209,7 @@ function Set-CIPPAssignedPolicy {
         $assignmentsObject = @{ $AssignmentPropertyName = @($FinalAssignments) }
 
         $AssignJSON = ConvertTo-Json -InputObject $assignmentsObject -Depth 10 -Compress
-        $ShouldProcess = $PSCmdlet.ShouldProcess($GroupName, "Assigning policy $PolicyId")
-        if ($ShouldProcess) {
+        if ($PSCmdlet.ShouldProcess($GroupName, "Assigning policy $PolicyId")) {
             $uri = "https://graph.microsoft.com/beta/$($PlatformType)/$Type('$($PolicyId)')/assign"
             $null = New-GraphPOSTRequest -uri $uri -tenantid $TenantFilter -type POST -body $AssignJSON
 
@@ -233,34 +218,17 @@ function Set-CIPPAssignedPolicy {
                 ($GroupNames -join ', ')
             } elseif ($GroupName) {
                 $GroupName
-            } elseif ($GroupIds -and @($GroupIds).Count -gt 0) {
-                @($GroupIds) -join ', '
             } else {
-                $null
+                'specified groups'
             }
 
-            $ExcludedGroupsDisplay = if ($ExcludeGroupNames -and @($ExcludeGroupNames).Count -gt 0) {
-                ($ExcludeGroupNames -join ', ')
-            } elseif ($ExcludeGroupIds -and @($ExcludeGroupIds).Count -gt 0) {
-                ($ExcludeGroupIds -join ', ')
+            if ($ExcludeGroup) {
+                Write-LogMessage -headers $Headers -API $APIName -message "Assigned group '$AssignedGroupsDisplay' and excluded group '$ExcludeGroup' on Policy $PolicyId" -Sev 'Info' -tenant $TenantFilter
+                return "Successfully assigned group '$AssignedGroupsDisplay' and excluded group '$ExcludeGroup' on Policy $PolicyId"
             } else {
-                $ExcludeGroup
+                Write-LogMessage -headers $Headers -API $APIName -message "Assigned group '$AssignedGroupsDisplay' on Policy $PolicyId" -Sev 'Info' -tenant $TenantFilter
+                return "Successfully assigned group '$AssignedGroupsDisplay' on Policy $PolicyId"
             }
-
-            $ResultMessage = if ($ExcludedGroupsDisplay -and $AssignedGroupsDisplay) {
-                "Successfully assigned group '$AssignedGroupsDisplay' and excluded group '$ExcludedGroupsDisplay' on Policy $PolicyId"
-            } elseif ($ExcludedGroupsDisplay) {
-                "Successfully updated exclusions to group '$ExcludedGroupsDisplay' on Policy $PolicyId"
-            } elseif ($AssignmentDirection -eq 'exclude' -and $AssignmentMode -eq 'replace') {
-                "Successfully cleared exclusions on Policy $PolicyId"
-            } else {
-                "Successfully assigned group '$AssignedGroupsDisplay' on Policy $PolicyId"
-            }
-
-            if ($ShouldProcess) {
-                Write-LogMessage -headers $Headers -API $APIName -message $ResultMessage -Sev 'Info' -tenant $TenantFilter
-            }
-            return $ResultMessage
         }
 
     } catch {

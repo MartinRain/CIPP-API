@@ -32,7 +32,7 @@ function Test-CIPPAccessPermissions {
         }
         if ($env:MSI_SECRET) {
             try {
-                $KV = Get-CippKeyVaultName
+                $KV = $env:WEBSITE_DEPLOYMENT_ID
                 $KeyVaultRefresh = Get-CippKeyVaultSecret -VaultName $kv -Name 'RefreshToken' -AsPlainText
                 if ($env:RefreshToken -ne $KeyVaultRefresh) {
                     $Success = $false

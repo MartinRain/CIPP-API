@@ -19,8 +19,9 @@ function Set-CIPPDBCacheDirectoryRecommendations {
     try {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching directory recommendations' -sev Debug
 
-        New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/directory/recommendations?$top=999' -tenantid $TenantFilter -Stream |
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'DirectoryRecommendations' -AddCount
+        $Recommendations = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/directory/recommendations?$top=999' -tenantid $TenantFilter
+        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'DirectoryRecommendations' -Data $Recommendations -AddCount
+        $Recommendations = $null
 
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Cached directory recommendations successfully' -sev Debug
 

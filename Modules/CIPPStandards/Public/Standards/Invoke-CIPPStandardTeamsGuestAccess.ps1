@@ -44,7 +44,7 @@ function Invoke-CIPPStandardTeamsGuestAccess {
     } #we're done.
 
     try {
-        $CurrentState = New-TeamsRequestV2 -TenantFilter $Tenant -Type 'TeamsClientConfiguration' -Action Get -Identity 'Global' |
+        $CurrentState = New-TeamsRequest -TenantFilter $Tenant -Cmdlet 'Get-CsTeamsClientConfiguration' -CmdParams @{Identity = 'Global' } |
             Select-Object AllowGuestUser
     } catch {
         $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message
@@ -66,7 +66,7 @@ function Invoke-CIPPStandardTeamsGuestAccess {
             }
 
             try {
-                $null = New-TeamsRequestV2 -TenantFilter $Tenant -Type 'TeamsClientConfiguration' -Action Set -Parameters $cmdParams
+                New-TeamsRequest -TenantFilter $Tenant -Cmdlet 'Set-CsTeamsClientConfiguration' -CmdParams $cmdParams
                 Write-LogMessage -API 'Standards' -tenant $Tenant -message 'Updated Teams Guest Access settings' -sev Info
             } catch {
                 $ErrorMessage = Get-NormalizedError -Message $_.Exception.Message

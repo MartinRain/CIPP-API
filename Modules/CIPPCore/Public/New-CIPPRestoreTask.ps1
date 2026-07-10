@@ -39,7 +39,7 @@ function New-CIPPRestoreTask {
     # Helper function to clean user object for Graph API - removes reference properties, nulls, and empty strings
     function Clean-GraphObject {
         param($Object, [switch]$ExcludeId)
-        $excludeProps = @('password', 'passwordProfile', '@odata.type', 'manager', 'memberOf', 'createdOnBehalfOf', 'createdByAppId', 'deletedDateTime', 'authorizationInfo', 'imAddresses')
+        $excludeProps = @('password', 'passwordProfile', '@odata.type', 'manager', 'memberOf', 'createdOnBehalfOf', 'createdByAppId', 'deletedDateTime', 'authorizationInfo')
         if ($ExcludeId) {
             $excludeProps += @('id')
         }

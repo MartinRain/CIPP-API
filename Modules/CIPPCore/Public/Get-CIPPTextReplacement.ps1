@@ -16,16 +16,6 @@ function Get-CIPPTextReplacement {
         $Text,
         [switch]$EscapeForJson
     )
-    # Escapes a replacement value so it can be safely spliced into a serialized JSON
-    # string literal. Handles quotes, backslashes, newlines, tabs and control chars.
-    function ConvertTo-CIPPJsonEscapedString {
-        param($Value)
-        if ($null -eq $Value) { return '' }
-        $Encoded = [string]$Value | ConvertTo-Json -Compress
-        # Strip the surrounding quotes ConvertTo-Json adds, leaving just the escaped body.
-        return $Encoded.Substring(1, $Encoded.Length - 2)
-    }
-
     if ($Text -isnot [string]) {
         return , $Text
     }
@@ -39,8 +29,6 @@ function Get-CIPPTextReplacement {
         '%serial%',
         '%systemroot%',
         '%systemdrive%',
-        '%system32%',
-        '%osdrive%',
         '%temp%',
         '%tenantid%',
         '%tenantfilter%',
@@ -80,7 +68,7 @@ function Get-CIPPTextReplacement {
             if (-not $Var.PSObject.Properties['Value']) { continue }
             $Val = $Var.Value
             if ($EscapeForJson.IsPresent) {
-                $Val = ConvertTo-CIPPJsonEscapedString -Value $Val
+                $Val = $Val -replace '(?<!\\)"', '\"'
             }
             $Vars[$Var.RowKey] = $Val
         }
@@ -98,7 +86,7 @@ function Get-CIPPTextReplacement {
                 if (-not $Var.PSObject.Properties['Value']) { continue }
                 $Val = $Var.Value
                 if ($EscapeForJson.IsPresent) {
-                    $Val = ConvertTo-CIPPJsonEscapedString -Value $Val
+                    $Val = $Val -replace '(?<!\\)"', '\"'
                 }
                 $Vars[$Var.RowKey] = $Val
             }

@@ -52,28 +52,15 @@ function Remove-CIPPGroupMember {
     )
 
     try {
-        $Requests = @(
-            foreach ($m in $Member) {
-                if ($m -like '*#EXT#*') { $m = [System.Web.HttpUtility]::UrlEncode($m) }
-                @{
-                    id     = "users-$m"
-                    url    = "users/$($m)?`$select=id,userPrincipalName"
-                    method = 'GET'
-                }
-            }
+        $Requests = foreach ($m in $Member) {
+            if ($m -like '*#EXT#*') { $m = [System.Web.HttpUtility]::UrlEncode($m) }
             @{
-                id     = 'group'
-                url    = "groups/$($GroupId)?`$select=id,displayName"
+                id     = $m
+                url    = "users/$($m)?`$select=id,userPrincipalName"
                 method = 'GET'
             }
-        )
-        $BulkResults = New-GraphBulkRequest -Requests @($Requests) -tenantid $TenantFilter
-        $Users = @($BulkResults | Where-Object { $_.id -like 'users-*' })
-        # Group display name for logging; falls back to the id if the lookup failed
-        # (e.g. the group was addressed by mail rather than GUID).
-        $GroupName = ($BulkResults | Where-Object { $_.id -eq 'group' }).body.displayName ?? $GroupId
-        $SuccessfulUsers = [System.Collections.Generic.List[string]]::new()
-        $FailedUsers = [System.Collections.Generic.List[string]]::new()
+        }
+        $Users = New-GraphBulkRequest -Requests @($Requests) -tenantid $TenantFilter
 
         if ($GroupType -eq 'Distribution list' -or $GroupType -eq 'Mail-Enabled Security') {
             $ExoBulkRequests = [System.Collections.Generic.List[object]]::new()
@@ -88,7 +75,7 @@ function Remove-CIPPGroupMember {
                         }
                     })
                 $ExoLogs.Add(@{
-                        message = "Removed member $($User.body.userPrincipalName) from group $($GroupName)"
+                        message = "Removed member $($User.body.userPrincipalName) from $($GroupId) group"
                         target  = $User.body.userPrincipalName
                     })
             }
@@ -106,7 +93,6 @@ function Remove-CIPPGroupMember {
                     $ExoError = $LastError | Where-Object { $ExoLog.target -in $_.target -and $_.error }
                     if (!$LastError -or ($LastError.error -and $LastError.target -notcontains $ExoLog.target)) {
                         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $ExoLog.message -Sev 'Info'
-                        $SuccessfulUsers.Add($ExoLog.target)
                     }
                 }
             }
@@ -120,36 +106,20 @@ function Remove-CIPPGroupMember {
             }
             $RemovalResults = New-GraphBulkRequest -tenantid $TenantFilter -Requests @($RemovalRequests)
             foreach ($Result in $RemovalResults) {
-                $UserPrincipalName = ($Users | Where-Object { $_.body.id -eq $Result.id }).body.userPrincipalName
-                if ($Result.status -lt 200 -or $Result.status -gt 299) {
-                    # Select-Object -First 1: Get-NormalizedError can return multiple strings
-                    # when a message matches more than one of its translation patterns.
-                    $ErrorText = Get-NormalizedError -message ($Result.body.error.message ?? "Request failed with status $($Result.status)") | Select-Object -First 1
-                    Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Failed to remove member $UserPrincipalName from group $($GroupName): $ErrorText" -Sev 'Error'
-                    $FailedUsers.Add("$UserPrincipalName ($ErrorText)")
-                } else {
-                    $SuccessfulUsers.Add($UserPrincipalName)
+                if ($Result.status -ne 204) {
+                    throw "Failed to remove member $($Result.id): $($Result.body.error.message)"
                 }
             }
         }
-        $Messages = [System.Collections.Generic.List[string]]::new()
-        if ($SuccessfulUsers.Count -gt 0) {
-            $Messages.Add("Successfully removed user $($SuccessfulUsers -join ', ') from group $($GroupName).")
-        }
-        if ($FailedUsers.Count -gt 0) {
-            $Messages.Add("Failed to remove $($FailedUsers -join '; ').")
-        }
-        $Results = $Messages -join ' '
-        if ($SuccessfulUsers.Count -eq 0 -and $FailedUsers.Count -gt 0) {
-            throw $Results
-        }
+        $UserList = ($Users.body.userPrincipalName -join ', ')
+        $Results = "Successfully removed user $UserList from $($GroupId)."
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Results -Sev Info
         return $Results
 
     } catch {
         $ErrorMessage = Get-CippException -Exception $_
         $UserList = if ($Users) { ($Users.body.userPrincipalName -join ', ') } else { ($Member -join ', ') }
-        $Results = "Failed to remove user $UserList from group $($GroupName ?? $GroupId): $($ErrorMessage.NormalizedError)"
+        $Results = "Failed to remove user $UserList from $($GroupId): $($ErrorMessage.NormalizedError)"
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Results -Sev Error -LogData $ErrorMessage
         throw $Results
     }

@@ -24,9 +24,8 @@ function Set-CIPPDBCacheDetectedApps {
         $JobRow = Get-CIPPAzDataTableEntity @JobsTable -Filter "PartitionKey eq '$TenantFilter' and RowKey eq '$ReportName'"
 
         if (-not $JobRow) {
-            Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "No $ReportName export job pending - submitting a new one" -sev Info
-            $null = New-CIPPIntuneReportExportJob -TenantFilter $TenantFilter -ReportName $ReportName
-            $JobRow = Get-CIPPAzDataTableEntity @JobsTable -Filter "PartitionKey eq '$TenantFilter' and RowKey eq '$ReportName'"
+            Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "No $ReportName job submitted - skipping detected apps cache" -sev Info
+            return
         }
 
         $JobId = $JobRow.JobId
@@ -36,30 +35,26 @@ function Set-CIPPDBCacheDetectedApps {
             return
         }
 
+        try {
+            $Job = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/deviceManagement/reports/exportJobs/$JobId" -tenantid $TenantFilter
+        } catch {
+            $ErrorMessage = Get-CippException -Exception $_
+            Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "$ReportName job $JobId not retrievable: $($ErrorMessage.NormalizedError)" -sev Warning -LogData $ErrorMessage
+            Remove-AzDataTableEntity @JobsTable -Entity $JobRow -Force -ErrorAction SilentlyContinue
+            return
+        }
 
-        $Deadline = [datetime]::UtcNow.AddMinutes(4)
-        while ($true) {
-            try {
-                $Job = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/deviceManagement/reports/exportJobs/$JobId" -tenantid $TenantFilter
-            } catch {
-                $ErrorMessage = Get-CippException -Exception $_
-                Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "$ReportName job $JobId not retrievable: $($ErrorMessage.NormalizedError)" -sev Warning -LogData $ErrorMessage
-                Remove-AzDataTableEntity @JobsTable -Entity $JobRow -Force -ErrorAction SilentlyContinue
-                return
-            }
-
-            if ($Job.status -eq 'completed') { break }
-            if ($Job.status -eq 'failed') {
+        switch ($Job.status) {
+            'completed' { }
+            'failed' {
                 Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "$ReportName job $JobId failed" -sev Error
                 Remove-AzDataTableEntity @JobsTable -Entity $JobRow -Force -ErrorAction SilentlyContinue
                 return
             }
-            if ([datetime]::UtcNow -ge $Deadline) {
-                # Keep the job row so the next cache run can consume the result
-                Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "$ReportName job $JobId still '$($Job.status)' after waiting - the result will be cached on the next run" -sev Info
+            default {
+                Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message "$ReportName job $JobId still '$($Job.status)' - skipping" -sev Info
                 return
             }
-            Start-Sleep -Seconds 20
         }
 
         if (-not $Job.url) {

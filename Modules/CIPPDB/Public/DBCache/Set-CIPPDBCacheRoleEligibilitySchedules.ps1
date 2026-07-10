@@ -18,8 +18,9 @@ function Set-CIPPDBCacheRoleEligibilitySchedules {
 
     try {
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Caching role eligibility schedules' -sev Debug
-        New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/roleManagement/directory/roleEligibilitySchedules' -tenantid $TenantFilter -Stream |
-            Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'RoleEligibilitySchedules' -AddCount
+        $RoleEligibilitySchedules = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/roleManagement/directory/roleEligibilitySchedules' -tenantid $TenantFilter
+        Add-CIPPDbItem -TenantFilter $TenantFilter -Type 'RoleEligibilitySchedules' -Data @($RoleEligibilitySchedules) -AddCount
+        $RoleEligibilitySchedules = $null
 
         Write-LogMessage -API 'CIPPDBCache' -tenant $TenantFilter -message 'Cached role eligibility schedules successfully' -sev Debug
 
